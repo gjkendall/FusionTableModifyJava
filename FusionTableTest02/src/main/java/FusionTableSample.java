@@ -1,5 +1,13 @@
 /*
- * Copyright (c) 2012 Google Inc.
+ * Program to modify rows in a Google Fusion Table.  By Greg Kendall.
+ * If you need assistance with this you can contact Greg at: kendall (dot) greg (at) gmail (dot) com
+ * I am using this code to learn how to modify fields in rows of a fusion table. I am also testing
+ * calling a kotlin routine from java. This code was based on Google examples of how to access
+ * a fusion table.  I am a novice at Java.
+ *
+ * This code also uses the geonames.org API to get names of states and cities near locations.
+ *
+ * Some code Copyright (c) 2012 Google Inc. (Basic access to Fusion Tables).
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -12,7 +20,8 @@
  * the License.
  */
 
-//package main.java.fusiontables;
+//package FusionTableTest02;
+
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
@@ -38,9 +47,27 @@ import com.google.api.services.fusiontables.model.TableList;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.Scanner;
+
+import java.io.BufferedReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+
+import org.geonames.Toponym;
+import org.geonames.ToponymSearchCriteria;
+import org.geonames.ToponymSearchResult;
+import org.geonames.WebService;
+
+import org.json.*;
+//import org.json.simple.JSONArray;
+//import org.json.simple.JSONObject;
+import org.json.simple.parser.*;
+
 
 /**
- * @author Christian Junk
+ * @author Christian Junk: Enhanced by Greg Kendall
  *
  */
 class FusionTablesSample {
@@ -51,10 +78,11 @@ class FusionTablesSample {
      */
     private static final String APPLICATION_NAME = "FusionTest02";
 
-    /** Directory to store user credentials. */
+    /**
+     * Directory to store user credentials.
+     */
     private static final java.io.File DATA_STORE_DIR =
             new java.io.File(System.getProperty("user.home"), "IdeaProjects/FusionTableTest02");
-//            new java.io.File(System.getProperty("user.home"), ".store/fusion_tables_sample");
 
     /**
      * Global instance of the {@link DataStoreFactory}. The best practice is to make it a single
@@ -62,15 +90,35 @@ class FusionTablesSample {
      */
     private static FileDataStoreFactory dataStoreFactory;
 
-    /** Global instance of the HTTP transport. */
+    /**
+     * Global instance of the HTTP transport.
+     */
     private static HttpTransport httpTransport;
 
-    /** Global instance of the JSON factory. */
+    /**
+     * Global instance of the JSON factory.
+     */
     private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
 
     private static Fusiontables fusiontables;
 
-    /** Authorizes the installed application to access user's protected data. */
+    private static String sqlupdate;
+    private static List<List<Object>> mylist; // list in a list (Rows, Columns)
+    private static String newAreaName;
+    private static final int ROW_ID = 0;
+    private static final int AREA_NAME = 1;
+    private static final int NOTES = 2;
+    private static final int NUMBER = 3;
+    private static final int LOCATION = 4;
+    private static final int STATE = 5;
+    private static final int CODES = 6;
+
+    private static int count;
+    private static boolean mtest = false;
+
+    /**
+     * Authorizes the installed application to access user's protected data.
+     */
     private static Credential authorize() throws Exception {
         // load client secrets
         GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(
@@ -93,21 +141,24 @@ class FusionTablesSample {
     }
 
     public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        System.out.println("Test Y/N: ");
+        String isTest = sc.next();
+        if (isTest == "Y") mtest=true;
+        sc.close();
         try {
-            httpTransport = GoogleNetHttpTransport.newTrustedTransport();
-            dataStoreFactory = new FileDataStoreFactory(DATA_STORE_DIR);
-            // authorization
-            Credential credential = authorize();
-            // set up global FusionTables instance
-            fusiontables = new Fusiontables.Builder(
-                    httpTransport, JSON_FACTORY, credential).setApplicationName(APPLICATION_NAME).build();
+            setupaccess();
             // run commands
-            listTables();
-            String tableId = createTable();
-            insertData(tableId);
-            showRows(tableId);
-            deleteTable(tableId);
-            // success!
+//            listTables();
+//            String tableId = createTable();
+//            insertData(tableId);
+            String tableID = "1Vq6h4j1oZ3XS5h-UhB8GtXMau4n5fqmMfBEkgYcY"; //main table
+//            String tableID = "1c-P1t1fJ7NCIqoPHzNT5pMjUFHa7ZDtP8RU78BcW";  //copy table
+            getRows(tableID);
+
+            updateRows(tableID);
+//            getState();
+//            deleteTable(tableId);
             return;
         } catch (IOException e) {
             System.err.println(e.getMessage());
@@ -121,21 +172,30 @@ class FusionTablesSample {
      * @param tableId
      * @throws IOException
      */
-    private static void showRows(String tableId) throws IOException {
-        View.header("Showing Rows From Table");
+    private static void getRows(String tableId) throws IOException {
+        View.header("Updating Rows From Table");
+        /*Sql sql = fusiontables.query().sql("SELECT RowID, 'Area Name', Notes, Number FROM " + tableId +
+                " Where Manager = '' AND 'Review 1' CONTAINS IGNORING CASE '.fs.' Order by Number ASC LIMIT 3000");*/
+        /*Sql sql = fusiontables.query().sql("SELECT RowID, 'Area Name', Notes, Number FROM " + tableId +
+                " Where 'Area Name' CONTAINS IGNORING CASE 'Tioga George' Order by Number ASC LIMIT 3000");*/
+        /*Sql sql = fusiontables.query().sql("SELECT RowID, 'Area Name', Notes, Number FROM " + tableId +
+                " Where 'Area Name' ='' Order by Number DESC LIMIT 2000");*/
+        /*Sql sql = fusiontables.query().sql("SELECT RowID, 'Area Name', Notes, Number FROM " + tableId +
+                " Where 'Area Name' CONTAINS 'X01' Order by Number DESC LIMIT 1"); */
+        /*AND 'City (nearest)' DOES NOT CONTAIN IGNORING CASE 'Mexico'*/
 
-
-        Sql sql = fusiontables.query().sql("SELECT Text,Number,Location,Date FROM " + tableId);
+        /*Sql sql = fusiontables.query().sql("SELECT RowID, 'Area Name', Notes, Number, Location FROM " + tableId +
+                " Where State = '' Order by Number DESC LIMIT 100");*/
+        /*Sql sql = fusiontables.query().sql("SELECT RowID, 'Area Name', Notes, Number, Location FROM " + tableId +
+                " Where State = 'BCS' Order by Number DESC LIMIT 100");*/
+        Sql sql = fusiontables.query().sql("SELECT RowID, 'Area Name', Notes, Number, Location, State, Codes FROM " + tableId +
+                " Where State = 'ID' AND 'City (nearest)' = '' Order by Number DESC LIMIT 100");
 
         try {
             Sqlresponse response = sql.execute();
-            List<List<Object>>  greg; // list in a list
-            greg = response.getRows();
+            // System.out.println(response.toPrettyString());
 
-            List<Object> greg2 = greg.get(0); /* get the first row */
-
-            System.out.println(response.toPrettyString());
-            System.out.println(greg2.get(3));  // print the 4th item in the row
+            mylist = response.getRows();
 
         } catch (IllegalArgumentException e) {
             // For google-api-services-fusiontables-v1-rev1-1.7.2-beta this exception will always
@@ -144,8 +204,71 @@ class FusionTablesSample {
             // http://code.google.com/p/google-api-java-client/issues/detail?id=545
         }
     }
+    
+    private static void updateRows(String tableId) throws IOException {
+        // IOException needed  ParseException
+        count = 1;
+        mylist.forEach((myRow) -> {
+            try {
+                // modify fields in table...
+                //newAreaName = kt.firstpart(myRow.get(NOTES).toString()); //get Notes first sentence
+                //newAreaName = newAreaName.replace("'", "''");
+                //newAreaName += " X01";
+                //String state = getStateFrmLoc(myRow.get(LOCATION).toString());
+                //String state = "MX-BCS";
+                float km;
+                if ( "AK,MT,NV".contains(myRow.get(STATE).toString()) ) {
+                    km = 180f; // 111.85 miles
+                } else {
+                    km = 80.5f;  // 50 miles
+                }
 
-    /** List tables for the authenticated user. */
+                BigCity big = new BigCity(myRow.get(LOCATION).toString(), km);
+                String cityState = big.cityName +", "+big.state;
+
+                if (big.population < 10000f) {
+                    System.out.println("Skip for low population :"+myRow.get(NUMBER));
+                } else {
+
+                    sqlupdate = "UPDATE " + tableId + " " +
+                            "SET 'City (nearest)' = '" + cityState + "' " +
+                            ",'Codes' = '" + myRow.get(CODES).toString() + ",#U1' " +
+                            "WHERE ROWID = " + myRow.get(ROW_ID);
+                    System.out.println("[" + count + "]" + myRow.get(NUMBER) + ": " + sqlupdate);
+
+                    // do the update...
+                    if (!mtest) {  // if testing then don't update
+                        sql_doupdate(sqlupdate);
+                    }
+                    count++;
+                    if ((count % 30) == 0) {
+                        System.out.println("waiting 60 seconds");
+                        TimeUnit.SECONDS.sleep(60); //Fusion Tables allows 30 updates then must wait 1 minute.
+                    }
+                }
+                } catch(Exception e){
+                    System.out.println(e.getMessage());
+            }
+
+        });
+
+    }
+
+    private static void sql_doupdate(String sqlupdate) throws IOException {
+        Sql sql2 = fusiontables.query().sql(sqlupdate);
+        try {
+            Sqlresponse response2 = sql2.execute();
+        } catch (IllegalArgumentException e) {
+            // For google-api-services-fusiontables-v1-rev1-1.7.2-beta this exception will always
+            // been thrown.
+            // Please see issue 545: JSON response could not be deserialized to Sqlresponse.class
+            // http://code.google.com/p/google-api-java-client/issues/detail?id=545
+        }
+    }
+
+    /**
+     * List tables for the authenticated user.
+     */
     private static void listTables() throws IOException {
         View.header("Listing My Tables");
 
@@ -164,7 +287,9 @@ class FusionTablesSample {
         }
     }
 
-    /** Create a table for the authenticated user. */
+    /**
+     * Create a table for the authenticated user.
+     */
     private static String createTable() throws IOException {
         View.header("Create Sample Table");
 
@@ -189,7 +314,9 @@ class FusionTablesSample {
         return r.getTableId();
     }
 
-    /** Inserts a row in the newly created table for the authenticated user. */
+    /**
+     * Inserts a row in the newly created table for the authenticated user.
+     */
     private static void insertData(String tableId) throws IOException {
         Sql sql = fusiontables.query().sql("INSERT INTO " + tableId + " (Text,Number,Location,Date) "
                 + "VALUES (" + "'Google Inc', " + "1, " + "'1600 Amphitheatre Parkway Mountain View, "
@@ -205,12 +332,186 @@ class FusionTablesSample {
         }
     }
 
-    /** Deletes a table for the authenticated user. */
+    /**
+     * Deletes a table for the authenticated user.
+     */
     private static void deleteTable(String tableId) throws IOException {
         View.header("Delete Sample Table");
         // Deletes a table
         Delete delete = fusiontables.table().delete(tableId);
         delete.execute();
+    }
+
+
+    public static void setupaccess() {
+        try {
+            httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+            dataStoreFactory = new FileDataStoreFactory(DATA_STORE_DIR);
+            // authorization
+            Credential credential = authorize();
+            // set up global FusionTables instance
+            fusiontables = new Fusiontables.Builder(
+                    httpTransport, JSON_FACTORY, credential).setApplicationName(APPLICATION_NAME).build();
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    public static void getState() {  //doing example from geonames.org
+        try {
+            WebService.setUserName("gjkendall"); // add your username here
+
+            ToponymSearchCriteria searchCriteria = new ToponymSearchCriteria();
+            searchCriteria.setQ("zurich");
+            ToponymSearchResult searchResult = WebService.search(searchCriteria);
+            for (Toponym toponym : searchResult.getToponyms()) {
+                System.out.println(toponym.getName() + " " + toponym.getCountryName());
+            }
+        } catch (Exception e){
+            //return null;
+        }
+
+    }
+
+    public static String getURL(String p_url) {
+        //given a RESTful URL return the JSON output. Currently only one line output.
+        try {
+
+            URL url = new URL(p_url);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Accept", "application/json");
+
+            if (conn.getResponseCode() != 200) {
+                throw new RuntimeException("Failed : HTTP error code : "
+                        + conn.getResponseCode());
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(
+                    (conn.getInputStream())));
+
+            String output;
+            //System.out.println("Output from Server .... \n");
+            while ((output = br.readLine()) != null) {
+                //System.out.println(output);
+                return output;  // need to fix this to handle multi-line JSON output.
+            }
+
+            conn.disconnect();
+            return output;
+
+        } catch (MalformedURLException e) {
+
+            e.printStackTrace();
+
+        } catch (IOException e) {
+
+            e.printStackTrace();
+
+        }
+        return "";
+    }
+
+    public static String getJSONitem(String jsonString, String item) throws ParseException
+    {
+        JSONObject obj = new JSONObject(jsonString);
+
+        // getting item like adminCode1
+        String out = obj.getString(item);
+
+        //System.out.println("getJSONitem:" + out);
+        return out;
+    }
+
+
+
+    public static String getStateFrmLoc( String location ) throws ParseException
+            // {"codes":[{"code":"7","level":"1","type":"ISO3166-2"}],"adminCode1":"07","distance":0,"countryCode":"AT","countryName":"Austria","adminName1":"Tyrol"}
+    {
+        String[] parts = location.replaceAll("\\s","").split(","); //remove spaces and split on ,
+        String url = "http://api.geonames.org/countrySubdivisionJSON?lat=" + parts[0] + "&lng=" +
+                parts[1] + "&username=gjkendall";
+
+        //System.out.println("JSON: " + url);
+
+
+        String output = getURL(url);
+        //System.out.println("getStateFrmLoc - JSON: "+output);
+        String state = getJSONitem(output, "adminCode1");
+        //System.out.println("getStateFrmLoc: "+state);
+        return state;
+    }
+
+}
+
+class BigCity // BigCityFromLoc
+{
+    public long population;
+    public String cityName;
+    public String state;
+
+    public BigCity(String location, float km) throws ParseException
+    {
+        //json = "{\"lng\":-106.3069722,\"geonameId\":5476825,\"countrycode\":\"US\",\"name\":\"Los Alamos\",\"fclName\":\"city, village,...\",\"toponymName\":\"Los Alamos\",\"fcodeName\":\"seat of a second-order administrative division\",\"wikipedia\":\"en.wikipedia.org/wiki/Los_Alamos%2C_New_Mexico\",\"lat\":35.8880796,\"fcl\":\"P\",\"population\":12019,\"fcode\":\"PPLA2\"}";
+
+        BoundingBox bx = new BoundingBox(location, km); // gps coord,km from location
+
+        String url = "http://api.geonames.org/citiesJSON?" +
+                "north=" + bx.north + "&south=" + bx.south + "&east=" + bx.east + "&west=" + bx.west +
+                "&lang=de&username=gjkendall&maxRows=1";
+
+        String jsonString = FusionTablesSample.getURL(url);
+        //System.out.println("JSON: "+output);
+
+        JSONObject obj = new JSONObject(jsonString);
+        JSONArray arr = obj.getJSONArray("geonames");
+
+        String city = arr.getJSONObject(0).getString("name");
+        long pop = arr.getJSONObject(0).getLong("population");
+
+        Double biglat = arr.getJSONObject(0).getDouble("lat");
+        Double biglng = arr.getJSONObject(0).getDouble("lng");
+        String bigloc = biglat.toString()+", "+biglng.toString();
+        String st = FusionTablesSample.getStateFrmLoc(bigloc); // need the state too for this location.
+
+        population = pop;
+        cityName = city;
+        state = st;
+
+    }
+}
+
+
+
+
+// Compute bounding Box coordinates for use with Geonames API.
+class BoundingBox
+{
+    public double north, south, east, west;
+    public BoundingBox(String location, float km)
+    {
+        //System.out.println(location + " : "+ km);
+        String[] parts = location.replaceAll("\\s","").split(","); //remove spaces and split on ,
+
+        double lat = Double.parseDouble(parts[0]);
+        double lng = Double.parseDouble(parts[1]);
+
+        double adjust = .008983112; // 1km in degrees at equator.
+        //adjust = 0.008983152770714983; // 1km in degrees at equator.
+
+        //System.out.println("deg: "+(1.0/40075.017)*360.0);
+
+
+        north = lat + ( km * adjust);
+        south = lat - ( km * adjust);
+
+        double lngRatio = 1/Math.cos(Math.toRadians(lat)); //ratio for lng size
+        //System.out.println("lngRatio: "+lngRatio);
+
+        east = lng + (km * adjust) * lngRatio;
+        west = lng - (km * adjust) * lngRatio;
     }
 
 }
@@ -238,4 +539,6 @@ class View {
         System.out.println("------------------------------------------------------");
         System.out.println();
     }
+
+
 }
